@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>方块诗</title>
+  <link rel="stylesheet" href="css/style.css?v=6">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <!-- Setup Screen -->
+    <section id="screen-setup" class="screen active">
+      <header class="header">
+        <h1 class="title">方块诗</h1>
+        <p class="tagline">词语如方块降落，偶然堆叠成诗</p>
+        <p class="intro">黑白极简的拼贴诗创作工具。每条短句拆成单字方块，组成可旋转的块体从画布顶部降落、堆叠。一局内短句不重复。触顶后进入处理诗块模式，可拖动、涂黑、删改，并导出完整诗页。</p>
+      </header>
+
+      <div class="setup-content">
+        <div class="panel">
+          <h2>语句库</h2>
+          <p class="hint">输入短句，每行一条。两字词语共占一格；长句中句库里的二字词（如「所有」「春天」）也会合并为一格。</p>
+          <textarea id="word-input" placeholder="春眠不觉晓&#10;处处闻啼鸟&#10;夜来风雨声&#10;花落知多少" rows="8"></textarea>
+          <div class="upload-row">
+            <label class="btn btn-outline" for="file-upload">
+              <span>上传图片 / 文本</span>
+              <input type="file" id="file-upload" accept="image/*,.txt,.md" hidden>
+            </label>
+            <span id="upload-status" class="upload-status"></span>
+          </div>
+        </div>
+
+        <div class="panel word-list-panel">
+          <div class="panel-header">
+            <h2>词条预览</h2>
+            <div class="panel-header-actions">
+              <span id="word-count" class="word-count">0 条</span>
+              <button id="restore-default-btn" class="btn btn-ghost btn-small" type="button">恢复默认</button>
+              <button id="clear-words-btn" class="btn btn-ghost btn-small" type="button">一键清空</button>
+            </div>
+          </div>
+          <div id="word-list" class="word-list"></div>
+          <div class="add-word-row">
+            <input type="text" id="add-word-input" placeholder="添加词条…">
+            <button id="add-word-btn" class="btn btn-small">添加</button>
+          </div>
+        </div>
+      </div>
+
+      <footer class="setup-footer">
+        <button id="collection-btn" class="btn btn-outline setup-secondary-btn" type="button">我的诗集 <span id="poem-count-badge" class="badge">0</span></button>
+        <button id="start-btn" class="btn btn-primary" disabled>开始落块</button>
+      </footer>
+    </section>
+
+    <!-- Collection Screen -->
+    <section id="screen-collection" class="screen">
+      <header class="header collection-header">
+        <button id="collection-back-btn" class="btn btn-ghost collection-back" type="button">← 返回</button>
+        <h1 class="title collection-title">诗集</h1>
+        <p class="tagline" id="collection-summary">已保存 0 首</p>
+      </header>
+      <div id="poem-grid" class="poem-grid"></div>
+      <p id="collection-empty" class="collection-empty hidden">还没有保存的诗。处理诗块完成后点「收诗」即可。</p>
+    </section>
+
+    <!-- Game Screen -->
+    <section id="screen-game" class="screen screen-fit">
+      <div class="console-shell">
+        <div class="console">
+          <header class="console-top">
+            <button id="back-btn" class="console-back" type="button" aria-label="返回">←</button>
+            <div class="console-brand">
+              <span class="brand-cn">方块诗</span>
+              <span class="brand-en">BRICK POEM</span>
+            </div>
+          </header>
+
+          <div class="console-body console-body-game">
+            <div class="lcd-bezel lcd-bezel-screen">
+              <div id="lcd-play-wrap" class="lcd-play">
+                <canvas id="game-canvas"></canvas>
+                <div id="game-overlay" class="game-overlay hidden">
+                  <p>词块触顶</p>
+                  <p class="overlay-sub">回合结束</p>
+                  <button id="enter-edit-btn" class="btn btn-lcd" type="button">处理诗块</button>
+                </div>
+              </div>
+            </div>
+
+            <aside class="console-side">
+              <div class="side-panel-inner">
+                <div class="stat-list">
+                  <div class="stat-block">
+                    <span class="stat-label">句数</span>
+                    <span id="stat-locked" class="stat-value">0</span>
+                  </div>
+                  <div class="stat-block">
+                    <span class="stat-label">行高</span>
+                    <span id="stat-rows" class="stat-value">0</span>
+                  </div>
+                  <div class="stat-block">
+                    <span class="stat-label">余句</span>
+                    <span id="stat-remain" class="stat-value">0</span>
+                  </div>
+                </div>
+
+                <div class="stat-block stat-next">
+                  <div class="next-head">
+                    <span class="stat-label">下一个</span>
+                    <button id="swap-next-btn" class="btn-swap-next" type="button">换一个</button>
+                  </div>
+                  <div id="next-preview" class="next-preview" aria-live="polite">
+                    <p id="next-text" class="next-text">—</p>
+                  </div>
+                </div>
+
+                <div id="game-status" class="lcd-status">落块中</div>
+
+                <div class="console-controls">
+                  <div class="dpad">
+                    <button class="pad-btn pad-up" type="button" data-action="rotate" aria-label="旋转">↑</button>
+                    <button class="pad-btn pad-left" type="button" data-action="left" aria-label="左移">←</button>
+                    <button class="pad-btn pad-down" type="button" data-action="down" aria-label="加速">↓</button>
+                    <button class="pad-btn pad-right" type="button" data-action="right" aria-label="右移">→</button>
+                  </div>
+                  <div class="action-cluster">
+                    <button id="pause-btn" class="action-btn action-pause" type="button" data-action="pause">暂停</button>
+                    <button class="action-btn action-rotate" type="button" data-action="rotate" aria-label="旋转">
+                      <span class="rotate-icon">↻</span>
+                    </button>
+                    <button class="action-btn action-drop" type="button" data-action="drop">速降</button>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Edit Screen -->
+    <section id="screen-edit" class="screen screen-fit">
+      <div class="console-shell">
+        <div class="console console-edit">
+          <header class="console-top">
+            <button id="edit-back-btn" class="console-back" type="button">←</button>
+            <div class="console-brand">
+              <span class="brand-cn">处理诗块</span>
+              <span class="brand-en">BLOCKS</span>
+            </div>
+            <button id="save-poem-btn" class="btn btn-lcd btn-save" type="button">收诗</button>
+            <button id="export-btn" class="btn btn-lcd btn-export" type="button">导出</button>
+          </header>
+          <div class="console-body console-body-game">
+            <div class="lcd-bezel lcd-bezel-screen lcd-bezel-edit">
+              <div id="edit-play-wrap" class="lcd-play lcd-play-full">
+                <canvas id="edit-canvas"></canvas>
+              </div>
+            </div>
+            <aside class="console-side console-side-edit">
+              <div class="side-panel-inner">
+                <p class="edit-side-hint">拖动整句<br>双击涂黑<br>右键删除</p>
+                <div class="edit-side-actions">
+                  <button id="save-poem-hint-btn" class="btn btn-side" type="button">收诗</button>
+                  <button id="restart-btn" class="btn btn-side" type="button">重玩</button>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="save-toast" class="save-toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
