@@ -31,11 +31,23 @@ function cjkLength(str) {
   return [...str].filter((ch) => /[\u4e00-\u9fff\u3400-\u4dbf]/.test(ch)).length;
 }
 
-/** OCR 常在每个汉字之间插入空格，需合并为一行诗块 */
-function isOcrCharSpaced(parts) {
-  if (parts.length <= 1) return false;
-  const singleCount = parts.filter((p) => cjkLength(cleanOcrSegment(p)) <= 1).length;
-  return singleCount / parts.length >= 0.45;
+/** OCR 常在每个汉字之间插入空格，或拆成 2 字词组，需合并为一行诗块 */
+function shouldMergeLineParts(parts) {
+  if (parts.length <= 1) return true;
+
+  const cleaned = parts.map((p) => cleanOcrSegment(p)).filter(Boolean);
+  if (!cleaned.length) return false;
+
+  const avgLen = cleaned.reduce((s, p) => s + cjkLength(p), 0) / cleaned.length;
+  if (avgLen <= 4) return true;
+
+  const shortCount = cleaned.filter((p) => cjkLength(p) <= 2).length;
+  if (shortCount / cleaned.length >= 0.25) return true;
+
+  const allLong = cleaned.every((p) => cjkLength(p) >= 4);
+  if (allLong && avgLen >= 5) return false;
+
+  return true;
 }
 
 /** 从一行 OCR 文本提取诗块（一行通常对应图片里的一行诗） */
@@ -46,7 +58,7 @@ function blocksFromLine(line) {
   const parts = trimmed.split(/[\s\u3000]+/).filter(Boolean);
   if (!parts.length) return [];
 
-  if (parts.length === 1 || isOcrCharSpaced(parts)) {
+  if (shouldMergeLineParts(parts)) {
     const merged = cleanOcrSegment(parts.join(''));
     return isValidPoemBlock(merged) ? [merged] : [];
   }
@@ -59,26 +71,173 @@ function blocksFromLine(line) {
   return blocks;
 }
 
+function lineCjkText(line) {
+  return cleanOcrSegment(String(line).replace(/[\s\u3000]+/g, ''));
+}
+
+/** 竖排 / 碎行 OCR：短行连续合并，空行分段 */
+function groupFragmentedLines(lines) {
+  const blocks = [];
+  let buf = '';
+
+  const flush = () => {
+    if (buf.length >= 2 && isValidPoemBlock(buf)) blocks.push(buf);
+    else if (buf.length === 1 && isValidPoemBlock(buf)) blocks.push(buf);
+    buf = '';
+  };
+
+  for (const raw of lines) {
+    const c = lineCjkText(raw);
+    if (!c) {
+      flush();
+      continue;
+    }
+    const len = cjkLength(c);
+    if (len <= 4) {
+      buf += c;
+      if (cjkLength(buf) >= 12) flush();
+    } else {
+      flush();
+      blocks.push(c);
+    }
+  }
+  flush();
+  return blocks;
+}
+
+function avgLineCjkLen(lines) {
+  if (!lines.length) return 0;
+  return lines.reduce((s, l) => s + cjkLength(lineCjkText(l)), 0) / lines.length;
+}
+
+function looksFragmented(lines) {
+  if (lines.length < 2) return false;
+  const avg = avgLineCjkLen(lines);
+  if (avg <= 4) return true;
+  const shortCount = lines.filter((l) => cjkLength(lineCjkText(l)) <= 2).length;
+  return shortCount / lines.length >= 0.45;
+}
+
+function mergeLineGroupTexts(lineGroup) {
+  const parts = lineGroup.map((l) => lineCjkText(l.text ?? '')).filter(Boolean);
+  if (!parts.length) return null;
+  if (parts.length === 1) return parts[0];
+  if (shouldMergeLineParts(parts)) return parts.join('');
+  return parts.filter(isValidPoemBlock);
+}
+
+/** 按 OCR 行距分组：同一视觉行内的碎字/碎词合并，行距大则新开诗块 */
+function blocksFromTesseractLines(lines) {
+  if (!lines.length) return [];
+
+  const sorted = [...lines].sort((a, b) => {
+    const ay = a.bbox?.y0 ?? 0;
+    const by = b.bbox?.y0 ?? 0;
+    if (Math.abs(ay - by) > 4) return ay - by;
+    return (a.bbox?.x0 ?? 0) - (b.bbox?.x0 ?? 0);
+  });
+
+  const groups = [];
+  let group = [sorted[0]];
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    const prev = group[group.length - 1];
+    const cur = sorted[i];
+    const prevBox = prev.bbox;
+    const curBox = cur.bbox;
+
+    let sameRow = true;
+    if (prevBox && curBox) {
+      const prevH = Math.max(prevBox.y1 - prevBox.y0, 1);
+      const curH = Math.max(curBox.y1 - curBox.y0, 1);
+      const avgH = (prevH + curH) / 2;
+      const gapY = curBox.y0 - prevBox.y1;
+      const overlapY = Math.min(prevBox.y1, curBox.y1) - Math.max(prevBox.y0, curBox.y0);
+      sameRow = overlapY >= avgH * 0.35 || gapY <= avgH * 0.45;
+    }
+
+    if (sameRow) group.push(cur);
+    else {
+      groups.push(group);
+      group = [cur];
+    }
+  }
+  groups.push(group);
+
+  const blocks = [];
+  for (const g of groups) {
+    const merged = mergeLineGroupTexts(g);
+    if (!merged) continue;
+    if (Array.isArray(merged)) blocks.push(...merged);
+    else if (isValidPoemBlock(merged)) blocks.push(merged);
+  }
+  return blocks;
+}
+
+/**
+ * 从 Tesseract 结果提取诗块：优先用行布局，再回退纯文本
+ */
+export function extractBlocksFromTesseract(data) {
+  if (!data) return [];
+
+  const tessLines = (data.lines || []).filter((line) => line.text?.trim());
+  if (tessLines.length >= 1) {
+    const layoutBlocks = blocksFromTesseractLines(tessLines);
+    if (layoutBlocks.length) return filterWords([...new Set(layoutBlocks)]);
+  }
+
+  const lineTexts = tessLines.map((line) => line.text.trim());
+  if (lineTexts.length >= 2) {
+    if (looksFragmented(lineTexts)) {
+      return filterWords([...new Set(groupFragmentedLines(lineTexts))]);
+    }
+    return splitOcrTextIntoBlocks(lineTexts.join('\n'));
+  }
+
+  const paraTexts = (data.paragraphs || [])
+    .map((para) => para.text?.trim())
+    .filter(Boolean);
+
+  if (paraTexts.length >= 1) {
+    const blocks = [];
+    for (const para of paraTexts) {
+      blocks.push(...splitOcrTextIntoBlocks(para));
+    }
+    if (blocks.length) return filterWords([...new Set(blocks)]);
+  }
+
+  return splitOcrTextIntoBlocks(data.text || '');
+}
+
 /**
  * OCR / 图片识别：
  * - 先按换行分行（图片里一行诗 = 一条诗块）
- * - 同行若被 OCR 拆成单字空格，则合并为一句（如「眼 前 晃 动 着」→「眼前晃动着」）
- * - 仅当一行里多个完整词组用空格分开时才拆成多条
+ * - 同行内的字间空格、2 字碎片合并为一句
  * - 英文与标点默认剔除
  */
 export function splitOcrTextIntoBlocks(text) {
   if (!text || !text.trim()) return [];
 
   const normalized = text.replace(/\r\n/g, '\n').trim();
-  const lines = normalized.split(/\n+/);
+  const paragraphs = normalized.split(/\n\s*\n/);
   const blocks = [];
 
-  for (const line of lines) {
-    blocks.push(...blocksFromLine(line));
+  for (const para of paragraphs) {
+    const lines = para.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) continue;
+
+    if (lines.length >= 2 && looksFragmented(lines)) {
+      blocks.push(...groupFragmentedLines(lines));
+      continue;
+    }
+
+    for (const line of lines) {
+      blocks.push(...blocksFromLine(line));
+    }
   }
 
   if (!blocks.length && normalized.includes(' ')) {
-    blocks.push(...blocksFromLine(normalized));
+    blocks.push(...blocksFromLine(normalized.replace(/\n/g, ' ')));
   }
 
   return filterWords([...new Set(blocks)]);

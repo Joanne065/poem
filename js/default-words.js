@@ -139,3 +139,6 @@ export const DEFAULT_WORDS = [
 
 /** 去重并过滤屏蔽词后的默认诗块库 */
 export const DEFAULT_WORD_LIBRARY = filterWords([...new Set(DEFAULT_WORDS)]);
+
+/** 默认库版本：更新 default-words.js 后递增，启动时自动补全新词条 */
+export const DEFAULT_LIBRARY_VERSION = 4;

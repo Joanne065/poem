@@ -1,11 +1,13 @@
-import { splitOcrTextIntoBlocks, filterWords } from './utils.js';
+import { splitOcrTextIntoBlocks, extractBlocksFromTesseract, filterWords } from './utils.js';
 import { Game } from './game.js';
 import { Editor } from './editor.js';
-import { DEFAULT_WORD_LIBRARY } from './default-words.js';
+import { DEFAULT_WORD_LIBRARY, DEFAULT_LIBRARY_VERSION } from './default-words.js';
 import { bindCanvasFit, fitCanvas } from './layout.js';
 import {
   loadWordLibrary,
   saveWordLibrary,
+  loadWordsVersion,
+  saveWordsVersion,
   loadPoems,
   savePoem,
   deletePoem,
@@ -13,11 +15,37 @@ import {
 } from './storage.js';
 import { renderPoemThumbnail } from './poem-render.js';
 
+function initWordLibrary() {
+  const saved = loadWordLibrary();
+  const defaults = [...DEFAULT_WORD_LIBRARY];
+
+  if (saved === null) {
+    saveWordsVersion(DEFAULT_LIBRARY_VERSION);
+    return { words: defaults, addedDefaults: 0 };
+  }
+
+  let words = filterWords(saved);
+  let addedDefaults = 0;
+  const savedVersion = loadWordsVersion() ?? 0;
+  const needsVersionMerge = savedVersion < DEFAULT_LIBRARY_VERSION;
+  const needsCountMerge = words.length < defaults.length;
+
+  if (needsVersionMerge || needsCountMerge) {
+    for (const w of defaults) {
+      if (!words.includes(w)) {
+        words.push(w);
+        addedDefaults += 1;
+      }
+    }
+    saveWordsVersion(DEFAULT_LIBRARY_VERSION);
+  }
+
+  return { words, addedDefaults };
+}
+
+const initResult = initWordLibrary();
 /** @type {string[]} */
-const savedWords = loadWordLibrary();
-let wordLibrary = savedWords !== null
-  ? filterWords(savedWords)
-  : filterWords([...DEFAULT_WORD_LIBRARY]);
+let wordLibrary = initResult.words;
 
 let game = null;
 let editor = null;
@@ -243,6 +271,7 @@ function clearWordLibrary() {
 
 function restoreDefaultLibrary() {
   wordLibrary = [...DEFAULT_WORD_LIBRARY];
+  saveWordsVersion(DEFAULT_LIBRARY_VERSION);
   uploadStatus.textContent = `已恢复默认诗块（${wordLibrary.length} 条）`;
   renderWordList();
 }
@@ -338,14 +367,15 @@ async function handleFileUpload(file) {
         uploadStatus.textContent = 'OCR 加载失败';
         return;
       }
-      const result = await Tesseract.recognize(file, 'chi_sim+eng', {
+      const result = await Tesseract.recognize(file, 'chi_sim', {
         logger: (m) => {
           if (m.status === 'recognizing text') {
             uploadStatus.textContent = `识别中 ${Math.round(m.progress * 100)}%`;
           }
         },
+        tessedit_pageseg_mode: '6',
       });
-      const words = splitOcrTextIntoBlocks(result.data.text);
+      const words = extractBlocksFromTesseract(result.data);
       uploadStatus.textContent = words.length ? '识别完成，请确认诗块' : '未识别到诗块';
       openOcrPreviewModal(words, file);
     } else {
@@ -596,6 +626,8 @@ if (nextPreview) {
   }).observe(nextPreview);
 }
 
-if (savedWords !== null && savedWords.length > 0) {
-  uploadStatus.textContent = '已恢复上次停诗间';
+if (initResult.addedDefaults > 0) {
+  uploadStatus.textContent = `已补全 ${initResult.addedDefaults} 条新默认诗块（共 ${wordLibrary.length} 条）`;
+} else if (wordLibrary.length > 0) {
+  uploadStatus.textContent = `停诗间 ${wordLibrary.length} 条`;
 }

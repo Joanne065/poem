@@ -1,6 +1,7 @@
 const KEYS = {
   WORDS: 'fangkuai-shi-words',
   POEMS: 'fangkuai-shi-poems',
+  WORDS_VERSION: 'fangkuai-shi-words-version',
 };
 
 const MAX_POEMS = 48;
@@ -26,6 +27,28 @@ export function saveWordLibrary(words) {
   } catch (err) {
     console.warn('句库保存失败', err);
     return false;
+  }
+}
+
+/** @param {number} version */
+export function saveWordsVersion(version) {
+  try {
+    localStorage.setItem(KEYS.WORDS_VERSION, String(version));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** @returns {number|null} */
+export function loadWordsVersion() {
+  try {
+    const raw = localStorage.getItem(KEYS.WORDS_VERSION);
+    if (raw == null) return null;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
   }
 }
 
