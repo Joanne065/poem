@@ -61,6 +61,18 @@ const collectionSummary = document.getElementById('collection-summary');
 const poemCountBadge = document.getElementById('poem-count-badge');
 const saveToast = document.getElementById('save-toast');
 
+const ocrModal = document.getElementById('ocr-preview-modal');
+const ocrPreviewImageWrap = document.getElementById('ocr-preview-image-wrap');
+const ocrPreviewImage = document.getElementById('ocr-preview-image');
+const ocrPreviewSummary = document.getElementById('ocr-preview-summary');
+const ocrPreviewList = document.getElementById('ocr-preview-list');
+const ocrPreviewEmpty = document.getElementById('ocr-preview-empty');
+const ocrModalAddAll = document.getElementById('ocr-modal-add-all');
+
+/** @type {string[]} */
+let ocrPreviewWords = [];
+let ocrPreviewImageUrl = null;
+
 function showScreen(name) {
   Object.values(screens).forEach((s) => s.classList.remove('active'));
   screens[name].classList.add('active');
@@ -95,16 +107,119 @@ function addBlocksFromText(text) {
   return added;
 }
 
+function addWordsToLibrary(words) {
+  let added = 0;
+  for (const word of words) {
+    if (!word || wordLibrary.includes(word)) continue;
+    wordLibrary.push(word);
+    added += 1;
+  }
+  if (added) renderWordList();
+  return added;
+}
+
 function addSingleBlock() {
   const text = addBlockInput.value;
   if (!text.trim()) return;
-  const added = addBlocksFromText(text);
+  const trimmed = text.trim();
+  const incoming = filterWords([trimmed]);
+  if (!incoming.length) {
+    uploadStatus.textContent = '无法添加该诗块';
+    return;
+  }
+  const added = addWordsToLibrary(incoming);
   if (added) {
     addBlockInput.value = '';
-    uploadStatus.textContent = `已添加 ${added} 条`;
+    uploadStatus.textContent = `已添加 ${added} 条到停诗间`;
   } else {
     uploadStatus.textContent = '该诗块已在停诗间';
   }
+}
+
+function renderOcrPreviewList() {
+  if (!ocrPreviewList) return;
+
+  ocrPreviewList.innerHTML = '';
+  const count = ocrPreviewWords.length;
+
+  if (ocrPreviewSummary) {
+    ocrPreviewSummary.textContent = count
+      ? `识别到 ${count} 条诗块，可删除不需要的再添加`
+      : '未识别到诗块';
+  }
+
+  if (ocrPreviewEmpty) {
+    ocrPreviewEmpty.classList.toggle('hidden', count > 0);
+  }
+
+  if (ocrModalAddAll) {
+    ocrModalAddAll.disabled = count === 0;
+  }
+
+  ocrPreviewWords.forEach((word, idx) => {
+    const chip = document.createElement('span');
+    chip.className = 'word-chip';
+    chip.innerHTML = `${escapeHtml(word)}<button class="remove" data-ocr-idx="${idx}" aria-label="删除">×</button>`;
+    ocrPreviewList.appendChild(chip);
+  });
+}
+
+function closeOcrPreviewModal() {
+  if (!ocrModal) return;
+  ocrModal.classList.add('hidden');
+  ocrModal.setAttribute('aria-hidden', 'true');
+  ocrPreviewWords = [];
+  if (ocrPreviewImageUrl) {
+    URL.revokeObjectURL(ocrPreviewImageUrl);
+    ocrPreviewImageUrl = null;
+  }
+  if (ocrPreviewImage) ocrPreviewImage.removeAttribute('src');
+  if (ocrPreviewImageWrap) ocrPreviewImageWrap.classList.add('hidden');
+}
+
+function openOcrPreviewModal(words, imageFile = null) {
+  if (!ocrModal) return;
+
+  ocrPreviewWords = [...new Set(filterWords(words))];
+  renderOcrPreviewList();
+
+  if (imageFile && ocrPreviewImage && ocrPreviewImageWrap) {
+    if (ocrPreviewImageUrl) URL.revokeObjectURL(ocrPreviewImageUrl);
+    ocrPreviewImageUrl = URL.createObjectURL(imageFile);
+    ocrPreviewImage.src = ocrPreviewImageUrl;
+    ocrPreviewImageWrap.classList.remove('hidden');
+  } else if (ocrPreviewImageWrap) {
+    ocrPreviewImageWrap.classList.add('hidden');
+  }
+
+  ocrModal.classList.remove('hidden');
+  ocrModal.setAttribute('aria-hidden', 'false');
+}
+
+function commitOcrPreview() {
+  const added = addWordsToLibrary(ocrPreviewWords);
+  closeOcrPreviewModal();
+  uploadStatus.textContent = added
+    ? `已添加 ${added} 条到停诗间`
+    : '所选诗块均已在停诗间';
+}
+
+function bindOcrPreviewModal() {
+  if (!ocrModal) return;
+
+  document.getElementById('ocr-modal-close')?.addEventListener('click', closeOcrPreviewModal);
+  document.getElementById('ocr-modal-cancel')?.addEventListener('click', closeOcrPreviewModal);
+  document.getElementById('ocr-modal-backdrop')?.addEventListener('click', closeOcrPreviewModal);
+  ocrModalAddAll?.addEventListener('click', commitOcrPreview);
+
+  ocrPreviewList?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-ocr-idx]');
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.ocrIdx, 10);
+    if (Number.isNaN(idx)) return;
+    ocrPreviewWords.splice(idx, 1);
+    renderOcrPreviewList();
+  });
 }
 
 function renderWordList() {
@@ -135,8 +250,8 @@ function clearWordLibrary() {
 }
 
 function restoreDefaultLibrary() {
-  wordLibrary = filterWords([...DEFAULT_WORD_LIBRARY]);
-  uploadStatus.textContent = `已恢复默认句库（${wordLibrary.length} 条）`;
+  wordLibrary = [...DEFAULT_WORD_LIBRARY];
+  uploadStatus.textContent = `已恢复默认诗块（${wordLibrary.length} 条）`;
   renderWordList();
 }
 
@@ -224,12 +339,8 @@ async function handleFileUpload(file) {
     if (file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
       const text = await file.text();
       const words = filterWords(splitIntoWords(text));
-      const before = wordLibrary.length;
-      wordLibrary = [...new Set([...wordLibrary, ...words])];
-      const added = wordLibrary.length - before;
-      uploadStatus.textContent = added
-        ? `已从文本识别 ${added} 条`
-        : '未识别到新诗块';
+      uploadStatus.textContent = words.length ? '识别完成' : '未识别到诗块';
+      openOcrPreviewModal(words);
     } else if (file.type.startsWith('image/')) {
       if (typeof Tesseract === 'undefined') {
         uploadStatus.textContent = 'OCR 加载失败';
@@ -243,16 +354,11 @@ async function handleFileUpload(file) {
         },
       });
       const words = filterWords(splitIntoWords(result.data.text));
-      const before = wordLibrary.length;
-      wordLibrary = [...new Set([...wordLibrary, ...words])];
-      const added = wordLibrary.length - before;
-      uploadStatus.textContent = added
-        ? `已从图片识别 ${added} 条`
-        : '未识别到新诗块';
+      uploadStatus.textContent = words.length ? '识别完成，请确认诗块' : '未识别到诗块';
+      openOcrPreviewModal(words, file);
     } else {
       uploadStatus.textContent = '不支持的文件格式';
     }
-    renderWordList();
   } catch (err) {
     console.error(err);
     uploadStatus.textContent = '识别失败，请重试';
@@ -490,6 +596,7 @@ document.getElementById('restart-btn').addEventListener('click', () => {
 renderWordList();
 updatePoemBadge();
 bindConsoleControls();
+bindOcrPreviewModal();
 
 if (nextPreview) {
   new ResizeObserver(() => {
