@@ -27,26 +27,60 @@ function isValidPoemBlock(segment) {
   return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(segment);
 }
 
-/**
- * OCR / 图片识别：仅按空格（含换行）切分；
- * 连续汉字为一条诗块；英文与标点默认剔除。
- */
-export function splitOcrTextIntoBlocks(text) {
-  if (!text || !text.trim()) return [];
+function cjkLength(str) {
+  return [...str].filter((ch) => /[\u4e00-\u9fff\u3400-\u4dbf]/.test(ch)).length;
+}
 
-  const parts = text
-    .replace(/\r\n/g, '\n')
-    .split(/[\s\u3000]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+/** OCR 常在每个汉字之间插入空格，需合并为一行诗块 */
+function isOcrCharSpaced(parts) {
+  if (parts.length <= 1) return false;
+  const singleCount = parts.filter((p) => cjkLength(cleanOcrSegment(p)) <= 1).length;
+  return singleCount / parts.length >= 0.45;
+}
+
+/** 从一行 OCR 文本提取诗块（一行通常对应图片里的一行诗） */
+function blocksFromLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed) return [];
+
+  const parts = trimmed.split(/[\s\u3000]+/).filter(Boolean);
+  if (!parts.length) return [];
+
+  if (parts.length === 1 || isOcrCharSpaced(parts)) {
+    const merged = cleanOcrSegment(parts.join(''));
+    return isValidPoemBlock(merged) ? [merged] : [];
+  }
 
   const blocks = [];
   for (const part of parts) {
     const cleaned = cleanOcrSegment(part);
-    if (isValidPoemBlock(cleaned)) {
-      blocks.push(cleaned);
-    }
+    if (isValidPoemBlock(cleaned)) blocks.push(cleaned);
   }
+  return blocks;
+}
+
+/**
+ * OCR / 图片识别：
+ * - 先按换行分行（图片里一行诗 = 一条诗块）
+ * - 同行若被 OCR 拆成单字空格，则合并为一句（如「眼 前 晃 动 着」→「眼前晃动着」）
+ * - 仅当一行里多个完整词组用空格分开时才拆成多条
+ * - 英文与标点默认剔除
+ */
+export function splitOcrTextIntoBlocks(text) {
+  if (!text || !text.trim()) return [];
+
+  const normalized = text.replace(/\r\n/g, '\n').trim();
+  const lines = normalized.split(/\n+/);
+  const blocks = [];
+
+  for (const line of lines) {
+    blocks.push(...blocksFromLine(line));
+  }
+
+  if (!blocks.length && normalized.includes(' ')) {
+    blocks.push(...blocksFromLine(normalized));
+  }
+
   return filterWords([...new Set(blocks)]);
 }
 
