@@ -1,10 +1,21 @@
+/** Words that must never enter the library (OCR, import, defaults) */
+const BLOCKED_WORDS = new Set(['@春日游', '春日游']);
+
+export function isBlockedWord(word) {
+  return BLOCKED_WORDS.has(word.trim());
+}
+
+export function filterWords(words) {
+  return words.filter((w) => w && !isBlockedWord(w));
+}
+
 /** Split text into words/phrases by whitespace, punctuation, and line breaks */
 export function splitIntoWords(text) {
   if (!text || !text.trim()) return [];
 
   const normalized = text.replace(/\r\n/g, '\n');
   const parts = normalized.split(/[\s，。！？、；：""''（）【】《》…—\-,.!?;:'"()\[\]{}]+|\n+/);
-  return [...new Set(parts.map((s) => s.trim()).filter(Boolean))];
+  return filterWords([...new Set(parts.map((s) => s.trim()).filter(Boolean))]);
 }
 
 /** Pick random item from array */

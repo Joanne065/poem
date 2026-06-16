@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>方块诗</title>
-  <link rel="stylesheet" href="css/style.css?v=6">
+  <title>俄罗诗方块</title>
+  <link rel="stylesheet" href="css/style.css?v=7">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
@@ -14,14 +14,14 @@
     <!-- Setup Screen -->
     <section id="screen-setup" class="screen active">
       <header class="header">
-        <h1 class="title">方块诗</h1>
+        <h1 class="title">俄罗诗方块</h1>
         <p class="tagline">词语如方块降落，偶然堆叠成诗</p>
         <p class="intro">黑白极简的拼贴诗创作工具。每条短句拆成单字方块，组成可旋转的块体从画布顶部降落、堆叠。一局内短句不重复。触顶后进入处理诗块模式，可拖动、涂黑、删改，并导出完整诗页。</p>
       </header>
 
       <div class="setup-content">
         <div class="panel">
-          <h2>语句库</h2>
+          <h2>停诗间</h2>
           <p class="hint">输入短句，每行一条。两字词语共占一格；长句中句库里的二字词（如「所有」「春天」）也会合并为一格。</p>
           <textarea id="word-input" placeholder="春眠不觉晓&#10;处处闻啼鸟&#10;夜来风雨声&#10;花落知多少" rows="8"></textarea>
           <div class="upload-row">
@@ -35,7 +35,7 @@
 
         <div class="panel word-list-panel">
           <div class="panel-header">
-            <h2>词条预览</h2>
+            <h2>诗块预览</h2>
             <div class="panel-header-actions">
               <span id="word-count" class="word-count">0 条</span>
               <button id="restore-default-btn" class="btn btn-ghost btn-small" type="button">恢复默认</button>
@@ -52,7 +52,7 @@
 
       <footer class="setup-footer">
         <button id="collection-btn" class="btn btn-outline setup-secondary-btn" type="button">我的诗集 <span id="poem-count-badge" class="badge">0</span></button>
-        <button id="start-btn" class="btn btn-primary" disabled>开始落块</button>
+        <button id="start-btn" class="btn btn-primary" disabled>开始拼贴诗块</button>
       </footer>
     </section>
 
@@ -74,7 +74,7 @@
           <header class="console-top">
             <button id="back-btn" class="console-back" type="button" aria-label="返回">←</button>
             <div class="console-brand">
-              <span class="brand-cn">方块诗</span>
+              <span class="brand-cn">俄罗诗方块</span>
               <span class="brand-en">BRICK POEM</span>
             </div>
           </header>
@@ -118,7 +118,7 @@
                   </div>
                 </div>
 
-                <div id="game-status" class="lcd-status">落块中</div>
+                <div id="game-status" class="lcd-status">诗块掉落中</div>
 
                 <div class="console-controls">
                   <div class="dpad">

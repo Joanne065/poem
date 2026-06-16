@@ -1,4 +1,4 @@
-import { splitIntoWords } from './utils.js';
+import { splitIntoWords, filterWords, isBlockedWord } from './utils.js';
 import { Game } from './game.js';
 import { Editor } from './editor.js';
 import { DEFAULT_WORD_LIBRARY } from './default-words.js';
@@ -14,7 +14,7 @@ import {
 import { renderPoemThumbnail } from './poem-render.js';
 
 /** @type {string[]} */
-let wordLibrary = loadWordLibrary() ?? [...DEFAULT_WORD_LIBRARY];
+let wordLibrary = filterWords(loadWordLibrary() ?? [...DEFAULT_WORD_LIBRARY]);
 
 let game = null;
 let editor = null;
@@ -105,7 +105,7 @@ function escapeHtml(str) {
 
 function addWord(word) {
   const trimmed = word.trim();
-  if (!trimmed || wordLibrary.includes(trimmed)) return;
+  if (!trimmed || isBlockedWord(trimmed) || wordLibrary.includes(trimmed)) return;
   wordLibrary.push(trimmed);
   syncTextareaFromLibrary();
   renderWordList();
@@ -119,7 +119,7 @@ function clearWordLibrary() {
 }
 
 function restoreDefaultLibrary() {
-  wordLibrary = [...DEFAULT_WORD_LIBRARY];
+  wordLibrary = filterWords([...DEFAULT_WORD_LIBRARY]);
   syncTextareaFromLibrary();
   uploadStatus.textContent = `已恢复默认句库（${wordLibrary.length} 条）`;
   renderWordList();
@@ -208,7 +208,7 @@ async function handleFileUpload(file) {
   try {
     if (file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
       const text = await file.text();
-      const words = splitIntoWords(text);
+      const words = filterWords(splitIntoWords(text));
       wordLibrary = [...new Set([...wordLibrary, ...words])];
       wordInput.value = wordInput.value
         ? wordInput.value + '\n' + text
@@ -226,7 +226,7 @@ async function handleFileUpload(file) {
           }
         },
       });
-      const words = splitIntoWords(result.data.text);
+      const words = filterWords(splitIntoWords(result.data.text));
       wordLibrary = [...new Set([...wordLibrary, ...words])];
       if (words.length) {
         wordInput.value = wordInput.value
@@ -305,7 +305,7 @@ function updateGameUI({ stats }) {
       pauseBtn.textContent = '暂停';
       pauseBtn.classList.remove('paused');
     } else {
-      gameStatus.textContent = '落块中';
+      gameStatus.textContent = '诗块掉落中';
       pauseBtn.textContent = '暂停';
       pauseBtn.classList.remove('paused');
     }

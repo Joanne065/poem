@@ -1,7 +1,6 @@
 import { canvasSize, drawGrid, drawCellText } from './utils.js';
 
 const PIXEL_RATIO = 2;
-const WATERMARK = '羊汽儿的诗块';
 
 const L = {
   sideW: 136,
@@ -152,16 +151,28 @@ function drawSidePanel(ctx, x, y, w, h) {
   ctx.fillText('重玩', btnX + btnW / 2, btnY + btnH + btnGap + btnH / 2);
 }
 
-function drawWatermark(ctx, totalW, y) {
+function drawWatermark(ctx, totalW, y, text) {
+  if (!text) return;
   ctx.fillStyle = '#111';
   ctx.font = '600 12px "Noto Serif SC", serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(WATERMARK, totalW / 2, y + L.watermarkH / 2);
+  ctx.fillText(text, totalW / 2, y + L.watermarkH / 2);
+}
+
+function promptAuthorName() {
+  const name = prompt('请输入你的名字（将用于导出水印）');
+  if (name === null) return null;
+  const trimmed = name.trim();
+  if (!trimmed) {
+    alert('名字不能为空');
+    return promptAuthorName();
+  }
+  return trimmed;
 }
 
 /** Render full edit-screen layout for PNG export */
-export function renderFullPoemExport(blocks) {
+export function renderFullPoemExport(blocks, authorName = '') {
   const { width: gridW, height: gridH } = canvasSize();
   const lcdW = gridW + L.bezelPad * 2;
   const lcdH = gridH + L.bezelPad * 2;
@@ -212,15 +223,18 @@ export function renderFullPoemExport(blocks) {
 
   drawSidePanel(ctx, bodyX + lcdW, bodyY, L.sideW, bodyH);
 
-  drawWatermark(ctx, totalW, cy + innerH + L.watermarkGap);
+  drawWatermark(ctx, totalW, cy + innerH + L.watermarkGap, authorName ? `@${authorName}的诗块` : '');
 
   return canvas;
 }
 
 export function exportFullPoemImage(blocks, filename) {
-  const canvas = renderFullPoemExport(blocks);
+  const author = promptAuthorName();
+  if (!author) return;
+
+  const canvas = renderFullPoemExport(blocks, author);
   const link = document.createElement('a');
-  link.download = filename || `方块诗-${Date.now()}.png`;
+  link.download = filename || `俄罗诗方块-${Date.now()}.png`;
   link.href = canvas.toDataURL('image/png');
   link.click();
 }
