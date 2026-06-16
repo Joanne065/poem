@@ -180,13 +180,20 @@ function blocksFromTesseractLines(lines) {
 export function extractBlocksFromTesseract(data) {
   if (!data) return [];
 
-  const tessLines = (data.lines || []).filter((line) => line.text?.trim());
-  if (tessLines.length >= 1) {
-    const layoutBlocks = blocksFromTesseractLines(tessLines);
-    if (layoutBlocks.length) return filterWords([...new Set(layoutBlocks)]);
+  try {
+    const tessLines = (data.lines || []).filter((line) => line.text?.trim());
+    if (tessLines.length >= 1) {
+      const layoutBlocks = blocksFromTesseractLines(tessLines);
+      if (layoutBlocks.length) return filterWords([...new Set(layoutBlocks)]);
+    }
+  } catch (err) {
+    console.warn('OCR 行布局解析失败', err);
   }
 
-  const lineTexts = tessLines.map((line) => line.text.trim());
+  const lineTexts = (data.lines || [])
+    .map((line) => line.text?.trim())
+    .filter(Boolean);
+
   if (lineTexts.length >= 2) {
     if (looksFragmented(lineTexts)) {
       return filterWords([...new Set(groupFragmentedLines(lineTexts))]);

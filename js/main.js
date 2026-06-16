@@ -16,27 +16,43 @@ import {
 import { renderPoemThumbnail } from './poem-render.js';
 
 function initWordLibrary() {
-  const saved = loadWordLibrary();
   const defaults = [...DEFAULT_WORD_LIBRARY];
 
-  if (saved === null) {
+  if (!defaults.length) {
+    console.error('[俄罗诗方块] 默认诗块库未加载');
+    return { words: [], addedDefaults: 0, bootError: '默认诗块库加载失败，请强制刷新页面' };
+  }
+
+  const saved = loadWordLibrary();
+
+  // 首次使用，或曾被误存为空数组 → 直接恢复完整默认库
+  if (saved === null || saved.length === 0) {
     saveWordsVersion(DEFAULT_LIBRARY_VERSION);
-    return { words: defaults, addedDefaults: 0 };
+    saveWordLibrary(defaults);
+    return {
+      words: defaults,
+      addedDefaults: 0,
+      restoredEmpty: saved?.length === 0,
+    };
   }
 
   let words = filterWords(saved);
   let addedDefaults = 0;
   const savedVersion = loadWordsVersion() ?? 0;
-  const needsVersionMerge = savedVersion < DEFAULT_LIBRARY_VERSION;
-  const needsCountMerge = words.length < defaults.length;
 
-  if (needsVersionMerge || needsCountMerge) {
+  if (savedVersion < DEFAULT_LIBRARY_VERSION || words.length < defaults.length) {
     for (const w of defaults) {
       if (!words.includes(w)) {
         words.push(w);
         addedDefaults += 1;
       }
     }
+    saveWordsVersion(DEFAULT_LIBRARY_VERSION);
+  }
+
+  if (!words.length) {
+    words = defaults;
+    addedDefaults = defaults.length;
     saveWordsVersion(DEFAULT_LIBRARY_VERSION);
   }
 
@@ -53,6 +69,8 @@ let unbindGameFit = null;
 let unbindEditFit = null;
 let viewingPoemId = null;
 let saveWordsTimer = null;
+/** 仅「一键清空」时允许把空词库写入 localStorage */
+let allowEmptySave = false;
 
 const screens = {
   setup: document.getElementById('screen-setup'),
@@ -114,6 +132,8 @@ function showToast(msg) {
 }
 
 function persistWordLibrary() {
+  if (!wordLibrary.length && !allowEmptySave) return;
+
   clearTimeout(saveWordsTimer);
   saveWordsTimer = setTimeout(() => {
     const ok = saveWordLibrary(wordLibrary);
@@ -134,7 +154,10 @@ function addWordsToLibrary(words) {
     wordLibrary.push(word);
     added += 1;
   }
-  if (added) renderWordList();
+  if (added) {
+    allowEmptySave = false;
+    renderWordList();
+  }
   return added;
 }
 
@@ -243,6 +266,13 @@ function bindOcrPreviewModal() {
 }
 
 function renderWordList() {
+  if (!wordList || !wordCount || !startBtn) return;
+
+  if (!wordLibrary.length && DEFAULT_WORD_LIBRARY.length) {
+    wordLibrary = [...DEFAULT_WORD_LIBRARY];
+    saveWordsVersion(DEFAULT_LIBRARY_VERSION);
+  }
+
   wordList.innerHTML = '';
   wordLibrary.forEach((word, idx) => {
     const chip = document.createElement('span');
@@ -263,6 +293,7 @@ function escapeHtml(str) {
 }
 
 function clearWordLibrary() {
+  allowEmptySave = true;
   wordLibrary = [];
   addBlockInput.value = '';
   uploadStatus.textContent = '';
@@ -270,6 +301,7 @@ function clearWordLibrary() {
 }
 
 function restoreDefaultLibrary() {
+  allowEmptySave = false;
   wordLibrary = [...DEFAULT_WORD_LIBRARY];
   saveWordsVersion(DEFAULT_LIBRARY_VERSION);
   uploadStatus.textContent = `已恢复默认诗块（${wordLibrary.length} 条）`;
@@ -373,9 +405,15 @@ async function handleFileUpload(file) {
             uploadStatus.textContent = `识别中 ${Math.round(m.progress * 100)}%`;
           }
         },
-        tessedit_pageseg_mode: '6',
+        tessedit_pageseg_mode: 6,
       });
-      const words = extractBlocksFromTesseract(result.data);
+      let words = [];
+      try {
+        words = extractBlocksFromTesseract(result.data);
+      } catch (ocrErr) {
+        console.warn('OCR 行解析失败，回退纯文本', ocrErr);
+        words = splitOcrTextIntoBlocks(result.data?.text || '');
+      }
       uploadStatus.textContent = words.length ? '识别完成，请确认诗块' : '未识别到诗块';
       openOcrPreviewModal(words, file);
     } else {
@@ -456,6 +494,7 @@ function updateGameUI({ stats }) {
 
 function bindConsoleControls() {
   const gameScreen = document.getElementById('screen-game');
+  if (!gameScreen) return;
 
   swapNextBtn?.addEventListener('click', () => {
     game?.swapNextPiece();
@@ -545,89 +584,111 @@ function leaveEditScreen() {
   }
 }
 
-wordList.addEventListener('click', (e) => {
-  const btn = e.target.closest('.remove');
-  if (!btn) return;
-  const idx = parseInt(btn.dataset.idx, 10);
-  wordLibrary.splice(idx, 1);
-  renderWordList();
-});
+function bindSetupEvents() {
+  wordList?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.remove');
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.idx, 10);
+    wordLibrary.splice(idx, 1);
+    renderWordList();
+  });
 
-addBlockBtn.addEventListener('click', addSingleBlock);
-addBlockInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') addSingleBlock();
-});
+  addBlockBtn?.addEventListener('click', addSingleBlock);
+  addBlockInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addSingleBlock();
+  });
 
-clearWordsBtn.addEventListener('click', () => {
-  if (wordLibrary.length && !confirm('清空停诗间所有诗块？')) return;
-  clearWordLibrary();
-});
-restoreDefaultBtn.addEventListener('click', restoreDefaultLibrary);
+  clearWordsBtn?.addEventListener('click', () => {
+    if (wordLibrary.length && !confirm('清空停诗间所有诗块？')) return;
+    clearWordLibrary();
+  });
+  restoreDefaultBtn?.addEventListener('click', restoreDefaultLibrary);
 
-fileUpload.addEventListener('change', (e) => {
-  const file = e.target.files?.[0];
-  handleFileUpload(file);
-  fileUpload.value = '';
-});
+  fileUpload?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    handleFileUpload(file);
+    fileUpload.value = '';
+  });
 
-startBtn.addEventListener('click', startGame);
-document.getElementById('collection-btn').addEventListener('click', openCollection);
-document.getElementById('collection-back-btn').addEventListener('click', () => showScreen('setup'));
+  startBtn?.addEventListener('click', startGame);
+  document.getElementById('collection-btn')?.addEventListener('click', openCollection);
+  document.getElementById('collection-back-btn')?.addEventListener('click', () => showScreen('setup'));
 
-poemGrid.addEventListener('click', (e) => {
-  const deleteBtn = e.target.closest('.poem-card-delete');
-  if (deleteBtn) {
-    e.stopPropagation();
-    const card = deleteBtn.closest('.poem-card');
-    if (card && confirm('从诗集中删除这首？')) {
-      deletePoem(card.dataset.id);
-      renderCollection();
-      showToast('已删除');
+  poemGrid?.addEventListener('click', (e) => {
+    const deleteBtn = e.target.closest('.poem-card-delete');
+    if (deleteBtn) {
+      e.stopPropagation();
+      const card = deleteBtn.closest('.poem-card');
+      if (card && confirm('从诗集中删除这首？')) {
+        deletePoem(card.dataset.id);
+        renderCollection();
+        showToast('已删除');
+      }
+      return;
     }
-    return;
-  }
-  const card = e.target.closest('.poem-card');
-  if (card) viewPoem(card.dataset.id);
-});
+    const card = e.target.closest('.poem-card');
+    if (card) viewPoem(card.dataset.id);
+  });
 
-document.getElementById('back-btn').addEventListener('click', () => {
-  if (game) game.stop();
-  if (unbindGameFit) {
-    unbindGameFit();
-    unbindGameFit = null;
-  }
-  showScreen('setup');
-});
+  document.getElementById('back-btn')?.addEventListener('click', () => {
+    if (game) game.stop();
+    if (unbindGameFit) {
+      unbindGameFit();
+      unbindGameFit = null;
+    }
+    showScreen('setup');
+  });
 
-document.getElementById('enter-edit-btn').addEventListener('click', enterEditMode);
-document.getElementById('edit-back-btn').addEventListener('click', leaveEditScreen);
-document.getElementById('export-btn').addEventListener('click', exportPoem);
-document.getElementById('save-poem-btn').addEventListener('click', saveCurrentPoem);
-document.getElementById('save-poem-hint-btn').addEventListener('click', saveCurrentPoem);
+  document.getElementById('enter-edit-btn')?.addEventListener('click', enterEditMode);
+  document.getElementById('edit-back-btn')?.addEventListener('click', leaveEditScreen);
+  document.getElementById('export-btn')?.addEventListener('click', exportPoem);
+  document.getElementById('save-poem-btn')?.addEventListener('click', saveCurrentPoem);
+  document.getElementById('save-poem-hint-btn')?.addEventListener('click', saveCurrentPoem);
 
-document.getElementById('restart-btn').addEventListener('click', () => {
-  if (editor) editor.detach();
-  if (unbindEditFit) {
-    unbindEditFit();
-    unbindEditFit = null;
-  }
-  viewingPoemId = null;
-  startGame();
-});
-
-renderWordList();
-updatePoemBadge();
-bindConsoleControls();
-bindOcrPreviewModal();
-
-if (nextPreview) {
-  new ResizeObserver(() => {
-    if (game?.nextPiece?.phrase) fitNextPreviewText(game.nextPiece.phrase);
-  }).observe(nextPreview);
+  document.getElementById('restart-btn')?.addEventListener('click', () => {
+    if (editor) editor.detach();
+    if (unbindEditFit) {
+      unbindEditFit();
+      unbindEditFit = null;
+    }
+    viewingPoemId = null;
+    startGame();
+  });
 }
 
-if (initResult.addedDefaults > 0) {
-  uploadStatus.textContent = `已补全 ${initResult.addedDefaults} 条新默认诗块（共 ${wordLibrary.length} 条）`;
-} else if (wordLibrary.length > 0) {
-  uploadStatus.textContent = `停诗间 ${wordLibrary.length} 条`;
+function boot() {
+  if (location.protocol === 'file:') {
+    uploadStatus.textContent = '请用 http://localhost 或 GitHub Pages 打开，不要直接双击 html 文件';
+  }
+
+  renderWordList();
+  updatePoemBadge();
+  bindSetupEvents();
+  bindConsoleControls();
+  bindOcrPreviewModal();
+
+  if (nextPreview) {
+    new ResizeObserver(() => {
+      if (game?.nextPiece?.phrase) fitNextPreviewText(game.nextPiece.phrase);
+    }).observe(nextPreview);
+  }
+
+  if (initResult.bootError) {
+    uploadStatus.textContent = initResult.bootError;
+  } else if (initResult.restoredEmpty) {
+    uploadStatus.textContent = `停诗间曾为空，已恢复默认诗块（${wordLibrary.length} 条）`;
+  } else if (initResult.addedDefaults > 0) {
+    uploadStatus.textContent = `已补全 ${initResult.addedDefaults} 条新默认诗块（共 ${wordLibrary.length} 条）`;
+  } else if (wordLibrary.length > 0) {
+    uploadStatus.textContent = `停诗间 ${wordLibrary.length} 条`;
+  }
+}
+
+try {
+  boot();
+} catch (err) {
+  console.error('[俄罗诗方块] 初始化失败', err);
+  if (uploadStatus) {
+    uploadStatus.textContent = '页面加载出错，请按 Cmd+Shift+R 强制刷新';
+  }
 }
