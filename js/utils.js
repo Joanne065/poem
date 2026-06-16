@@ -9,6 +9,47 @@ export function filterWords(words) {
   return words.filter((w) => w && !isBlockedWord(w));
 }
 
+const PUNCT_RE = /[，。！？、；：""''（）【】《》…—\-,.!?;:'"()\[\]{}@#￥%&*+=<>/~`|\\·]/g;
+const ENGLISH_RE = /[a-zA-Z]/g;
+
+/** Remove English letters and punctuation from a segment; keep continuous CJK etc. */
+function cleanOcrSegment(segment) {
+  return segment
+    .trim()
+    .replace(ENGLISH_RE, '')
+    .replace(PUNCT_RE, '')
+    .replace(/[\s\u3000]+/g, '')
+    .trim();
+}
+
+function isValidPoemBlock(segment) {
+  if (!segment || isBlockedWord(segment)) return false;
+  return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(segment);
+}
+
+/**
+ * OCR / 图片识别：仅按空格（含换行）切分；
+ * 连续汉字为一条诗块；英文与标点默认剔除。
+ */
+export function splitOcrTextIntoBlocks(text) {
+  if (!text || !text.trim()) return [];
+
+  const parts = text
+    .replace(/\r\n/g, '\n')
+    .split(/[\s\u3000]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const blocks = [];
+  for (const part of parts) {
+    const cleaned = cleanOcrSegment(part);
+    if (isValidPoemBlock(cleaned)) {
+      blocks.push(cleaned);
+    }
+  }
+  return filterWords([...new Set(blocks)]);
+}
+
 /** Split text into words/phrases by whitespace, punctuation, and line breaks */
 export function splitIntoWords(text) {
   if (!text || !text.trim()) return [];

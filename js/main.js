@@ -1,4 +1,4 @@
-import { splitIntoWords, filterWords } from './utils.js';
+import { splitOcrTextIntoBlocks, filterWords } from './utils.js';
 import { Game } from './game.js';
 import { Editor } from './editor.js';
 import { DEFAULT_WORD_LIBRARY } from './default-words.js';
@@ -94,17 +94,9 @@ function persistWordLibrary() {
 }
 
 function addBlocksFromText(text) {
-  const incoming = filterWords(splitIntoWords(text));
+  const incoming = splitOcrTextIntoBlocks(text);
   if (!incoming.length) return 0;
-  let added = 0;
-  for (const word of incoming) {
-    if (!wordLibrary.includes(word)) {
-      wordLibrary.push(word);
-      added += 1;
-    }
-  }
-  if (added) renderWordList();
-  return added;
+  return addWordsToLibrary(incoming);
 }
 
 function addWordsToLibrary(words) {
@@ -338,7 +330,7 @@ async function handleFileUpload(file) {
   try {
     if (file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
       const text = await file.text();
-      const words = filterWords(splitIntoWords(text));
+      const words = splitOcrTextIntoBlocks(text);
       uploadStatus.textContent = words.length ? '识别完成' : '未识别到诗块';
       openOcrPreviewModal(words);
     } else if (file.type.startsWith('image/')) {
@@ -353,7 +345,7 @@ async function handleFileUpload(file) {
           }
         },
       });
-      const words = filterWords(splitIntoWords(result.data.text));
+      const words = splitOcrTextIntoBlocks(result.data.text);
       uploadStatus.textContent = words.length ? '识别完成，请确认诗块' : '未识别到诗块';
       openOcrPreviewModal(words, file);
     } else {
