@@ -36,8 +36,6 @@ const wordCount = document.getElementById('word-count');
 const startBtn = document.getElementById('start-btn');
 const fileUpload = document.getElementById('file-upload');
 const uploadStatus = document.getElementById('upload-status');
-const addWordInput = document.getElementById('add-word-input');
-const addWordBtn = document.getElementById('add-word-btn');
 const clearWordsBtn = document.getElementById('clear-words-btn');
 const restoreDefaultBtn = document.getElementById('restore-default-btn');
 const gameCanvas = document.getElementById('game-canvas');
@@ -101,14 +99,6 @@ function escapeHtml(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-}
-
-function addWord(word) {
-  const trimmed = word.trim();
-  if (!trimmed || isBlockedWord(trimmed) || wordLibrary.includes(trimmed)) return;
-  wordLibrary.push(trimmed);
-  syncTextareaFromLibrary();
-  renderWordList();
 }
 
 function clearWordLibrary() {
@@ -416,18 +406,6 @@ wordList.addEventListener('click', (e) => {
   wordLibrary.splice(idx, 1);
   syncTextareaFromLibrary();
   renderWordList();
-});
-
-addWordBtn.addEventListener('click', () => {
-  addWord(addWordInput.value);
-  addWordInput.value = '';
-});
-
-addWordInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    addWord(addWordInput.value);
-    addWordInput.value = '';
-  }
 });
 
 clearWordsBtn.addEventListener('click', clearWordLibrary);
