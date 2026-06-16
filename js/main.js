@@ -1,4 +1,4 @@
-import { splitIntoWords, filterWords, isBlockedWord } from './utils.js';
+import { splitIntoWords, filterWords } from './utils.js';
 import { Game } from './game.js';
 import { Editor } from './editor.js';
 import { DEFAULT_WORD_LIBRARY } from './default-words.js';
@@ -14,7 +14,10 @@ import {
 import { renderPoemThumbnail } from './poem-render.js';
 
 /** @type {string[]} */
-let wordLibrary = filterWords(loadWordLibrary() ?? [...DEFAULT_WORD_LIBRARY]);
+const savedWords = loadWordLibrary();
+let wordLibrary = savedWords !== null
+  ? filterWords(savedWords)
+  : filterWords([...DEFAULT_WORD_LIBRARY]);
 
 let game = null;
 let editor = null;
@@ -30,7 +33,8 @@ const screens = {
   collection: document.getElementById('screen-collection'),
 };
 
-const wordInput = document.getElementById('word-input');
+const addBlockInput = document.getElementById('add-block-input');
+const addBlockBtn = document.getElementById('add-block-btn');
 const wordList = document.getElementById('word-list');
 const wordCount = document.getElementById('word-count');
 const startBtn = document.getElementById('start-btn');
@@ -77,8 +81,30 @@ function persistWordLibrary() {
   }, 280);
 }
 
-function syncTextareaFromLibrary() {
-  wordInput.value = wordLibrary.join('\n');
+function addBlocksFromText(text) {
+  const incoming = filterWords(splitIntoWords(text));
+  if (!incoming.length) return 0;
+  let added = 0;
+  for (const word of incoming) {
+    if (!wordLibrary.includes(word)) {
+      wordLibrary.push(word);
+      added += 1;
+    }
+  }
+  if (added) renderWordList();
+  return added;
+}
+
+function addSingleBlock() {
+  const text = addBlockInput.value;
+  if (!text.trim()) return;
+  const added = addBlocksFromText(text);
+  if (added) {
+    addBlockInput.value = '';
+    uploadStatus.textContent = `已添加 ${added} 条`;
+  } else {
+    uploadStatus.textContent = '该诗块已在停诗间';
+  }
 }
 
 function renderWordList() {
@@ -103,14 +129,13 @@ function escapeHtml(str) {
 
 function clearWordLibrary() {
   wordLibrary = [];
-  wordInput.value = '';
+  addBlockInput.value = '';
   uploadStatus.textContent = '';
   renderWordList();
 }
 
 function restoreDefaultLibrary() {
   wordLibrary = filterWords([...DEFAULT_WORD_LIBRARY]);
-  syncTextareaFromLibrary();
   uploadStatus.textContent = `已恢复默认句库（${wordLibrary.length} 条）`;
   renderWordList();
 }
@@ -199,11 +224,12 @@ async function handleFileUpload(file) {
     if (file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
       const text = await file.text();
       const words = filterWords(splitIntoWords(text));
+      const before = wordLibrary.length;
       wordLibrary = [...new Set([...wordLibrary, ...words])];
-      wordInput.value = wordInput.value
-        ? wordInput.value + '\n' + text
-        : text;
-      uploadStatus.textContent = `已识别 ${words.length} 条`;
+      const added = wordLibrary.length - before;
+      uploadStatus.textContent = added
+        ? `已从文本识别 ${added} 条`
+        : '未识别到新诗块';
     } else if (file.type.startsWith('image/')) {
       if (typeof Tesseract === 'undefined') {
         uploadStatus.textContent = 'OCR 加载失败';
@@ -217,15 +243,12 @@ async function handleFileUpload(file) {
         },
       });
       const words = filterWords(splitIntoWords(result.data.text));
+      const before = wordLibrary.length;
       wordLibrary = [...new Set([...wordLibrary, ...words])];
-      if (words.length) {
-        wordInput.value = wordInput.value
-          ? wordInput.value + '\n' + words.join('\n')
-          : words.join('\n');
-      }
-      uploadStatus.textContent = words.length
-        ? `已从图片识别 ${words.length} 条`
-        : '未识别到文字';
+      const added = wordLibrary.length - before;
+      uploadStatus.textContent = added
+        ? `已从图片识别 ${added} 条`
+        : '未识别到新诗块';
     } else {
       uploadStatus.textContent = '不支持的文件格式';
     }
@@ -394,21 +417,23 @@ function leaveEditScreen() {
   }
 }
 
-wordInput.addEventListener('input', () => {
-  wordLibrary = splitIntoWords(wordInput.value);
-  renderWordList();
-});
-
 wordList.addEventListener('click', (e) => {
   const btn = e.target.closest('.remove');
   if (!btn) return;
   const idx = parseInt(btn.dataset.idx, 10);
   wordLibrary.splice(idx, 1);
-  syncTextareaFromLibrary();
   renderWordList();
 });
 
-clearWordsBtn.addEventListener('click', clearWordLibrary);
+addBlockBtn.addEventListener('click', addSingleBlock);
+addBlockInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') addSingleBlock();
+});
+
+clearWordsBtn.addEventListener('click', () => {
+  if (wordLibrary.length && !confirm('清空停诗间所有诗块？')) return;
+  clearWordLibrary();
+});
 restoreDefaultBtn.addEventListener('click', restoreDefaultLibrary);
 
 fileUpload.addEventListener('change', (e) => {
@@ -462,7 +487,6 @@ document.getElementById('restart-btn').addEventListener('click', () => {
   startGame();
 });
 
-syncTextareaFromLibrary();
 renderWordList();
 updatePoemBadge();
 bindConsoleControls();
@@ -473,6 +497,6 @@ if (nextPreview) {
   }).observe(nextPreview);
 }
 
-if (loadWordLibrary()) {
-  uploadStatus.textContent = '已恢复上次句库';
+if (savedWords !== null && savedWords.length > 0) {
+  uploadStatus.textContent = '已恢复上次停诗间';
 }

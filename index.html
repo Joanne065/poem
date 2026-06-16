@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>俄罗诗方块</title>
-  <link rel="stylesheet" href="css/style.css?v=8">
+  <link rel="stylesheet" href="css/style.css?v=9">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
@@ -19,12 +19,15 @@
       </header>
 
       <div class="setup-content">
-        <div class="panel">
+        <div class="panel panel-add">
           <h2>添加诗块</h2>
-          <textarea id="word-input" placeholder="" rows="8"></textarea>
-          <div class="upload-row">
-            <label class="btn btn-outline" for="file-upload">
-              <span>上传图片 / 文本</span>
+          <div class="add-block-row">
+            <input type="text" id="add-block-input" placeholder="输入诗块…" autocomplete="off">
+            <button id="add-block-btn" class="btn btn-small" type="button">添加</button>
+          </div>
+          <div class="add-block-actions">
+            <label class="btn btn-outline btn-upload" for="file-upload">
+              <span>上传图片识别</span>
               <input type="file" id="file-upload" accept="image/*,.txt,.md" hidden>
             </label>
             <span id="upload-status" class="upload-status"></span>
